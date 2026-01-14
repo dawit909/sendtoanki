@@ -23,7 +23,7 @@ from typing import Dict, List, Tuple, Set
 import lxml.etree as etree
 
 # New Oxford American Dictionary
-NOAD = './Resources/Body.data'
+NOAD = './resources/oxford_dict/Resources/Body.data'
 
 
 # Matches spans that give some meta info, like "literary", "informal", etc.

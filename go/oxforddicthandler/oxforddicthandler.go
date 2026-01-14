@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"tuto.sqlc.dev/app/dictparser"
-	"tuto.sqlc.dev/app/tutorial"
+	"tuto.sqlc.dev/app/go/dictparser"
+	"tuto.sqlc.dev/app/go/tutorial"
 )
 
 type OxfordWord struct {

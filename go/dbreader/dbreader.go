@@ -9,7 +9,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"tuto.sqlc.dev/app/tutorial"
+	"tuto.sqlc.dev/app/go/tutorial"
 )
 
 func ReadDB(dbName string) ([]tutorial.GetWordsByTitleRow, error) {
