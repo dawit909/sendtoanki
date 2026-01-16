@@ -10,8 +10,8 @@ import (
 	"database/sql"
 )
 
-const getWordsByTitle = `-- name: GetWordsByTitle :many
-select WORDS.stem, WORDS.word, BOOK_INFO.title, LOOKUPS.usage
+const getRows = `-- name: GetRows :many
+select WORDS.stem, WORDS.word, BOOK_INFO.title, LOOKUPS.usage, LOOKUPS.word_key
 from LOOKUPS left join WORDS
 on WORDS.id = LOOKUPS.word_key
 left join BOOK_INFO
@@ -19,29 +19,64 @@ on BOOK_INFO.id = LOOKUPS.book_key
 order by WORDS.stem, LOOKUPS.timestamp
 `
 
-type GetWordsByTitleRow struct {
-	Stem  sql.NullString
-	Word  sql.NullString
-	Title sql.NullString
-	Usage sql.NullString
+type GetRowsRow struct {
+	Stem    sql.NullString
+	Word    sql.NullString
+	Title   sql.NullString
+	Usage   sql.NullString
+	WordKey sql.NullString
 }
 
-// where BOOK_INFO.title = 'Personal History'
-func (q *Queries) GetWordsByTitle(ctx context.Context) ([]GetWordsByTitleRow, error) {
-	rows, err := q.db.QueryContext(ctx, getWordsByTitle)
+func (q *Queries) GetRows(ctx context.Context) ([]GetRowsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getRows)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetWordsByTitleRow
+	var items []GetRowsRow
 	for rows.Next() {
-		var i GetWordsByTitleRow
+		var i GetRowsRow
 		if err := rows.Scan(
 			&i.Stem,
 			&i.Word,
 			&i.Title,
 			&i.Usage,
+			&i.WordKey,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getWordKeysWithMultipleUsages = `-- name: GetWordKeysWithMultipleUsages :many
+select LOOKUPS.word_key, COUNT(LOOKUPS.word_key) from LOOKUPS
+GROUP BY LOOKUPS.word_key
+HAVING COUNT(LOOKUPS.word_key) > 1
+`
+
+type GetWordKeysWithMultipleUsagesRow struct {
+	WordKey sql.NullString
+	Count   int64
+}
+
+func (q *Queries) GetWordKeysWithMultipleUsages(ctx context.Context) ([]GetWordKeysWithMultipleUsagesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getWordKeysWithMultipleUsages)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetWordKeysWithMultipleUsagesRow
+	for rows.Next() {
+		var i GetWordKeysWithMultipleUsagesRow
+		if err := rows.Scan(&i.WordKey, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

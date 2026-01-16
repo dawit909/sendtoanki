@@ -2,14 +2,246 @@
 <html>
 <head>
     <title>Processed Words</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        
+        ul { list-style-type: none; padding: 0; }
+        li { 
+            margin-bottom: 8px; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            position: relative;
+        }
+
+        /* The container for the word and icon */
+        .word-wrapper {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        .word-wrapper:hover {
+            background-color: #f0f0f0;
+        }
+
+        /* 1. THE ICON */
+        .info-icon {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 20px;
+            height: 20px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* 2. THE ANKI PREVIEW (Hidden by default) */
+        .anki-preview {
+            display: none; /* Controlled by JS */
+            position: fixed; /* Fixed allows strictly following mouse coordinates */
+            width: 400px;
+            background-color: #2f2f31;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            z-index: 9999;
+            text-align: left;
+            pointer-events: auto; /* Allows selecting text inside */
+        }
+
+        /* 3. INSIDE THE PREVIEW */
+        .anki-card-content h1 {
+            margin: 0 0 10px 0;
+            font-size: 32px;
+            text-align: center;
+            border-bottom: 1px solid #555;
+            padding-bottom: 10px;
+        }
+
+        .anki-usage {
+            font-style: italic;
+            color: #ddd;
+            margin: 15px 0;
+            font-size: 14px;
+            border-left: 3px solid #3498db;
+            padding-left: 10px;
+        }
+
+        .anki-definition {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .word-header { display: none; }
+        .pos-header { color: #5dade2; font-weight: bold; margin-top: 10px;}
+        .def-list { margin: 5px 0 0 20px; color: #ccc; }
+
+        .delete-btn {
+            color: #e74c3c;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2em;
+            padding: 0 5px;
+        }
+
+        .badge-basic {
+        background-color: #27ae60; /* Green */
+        color: white;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        margin-left: 5px;
+    }
+    
+    /* Optional: Change the word color itself if it is basic */
+    .word-basic-text {
+        color: #27ae60;
+    }
+    </style>
 </head>
 <body>
     <h1>Processed Words</h1>
-    <ul>
-        {{range .Words}}
-        <li>{{.Word}}</li>
-        {{end}}
-    </ul>
-    <a href="{{.DownloadURL}}" id="downloadBtn">Download output.apkg</a>
+
+    {{if .Words}}
+        <ul>
+    {{range .Words}}
+    <li>
+        <div class="word-wrapper {{if .IsBasic}}word-basic-text{{end}}" 
+             onmouseenter="handleMouseEnter(event, this)" 
+             onmouseleave="handleMouseLeave(this)" 
+             onclick="handleClick(event, this)">
+            
+            <strong>{{.Word}}</strong>
+
+            {{if .IsBasic}}
+                <span class="badge-basic">Basic</span>
+            {{end}}
+            
+            <div class="info-icon">i</div>
+
+            <div class="anki-preview">
+                <div class="anki-card-content">
+                    <h1>{{.Word}}</h1>
+                    {{if .Usage}}
+                    <div class="anki-usage">"{{.Usage | safe}}"</div>
+                    {{end}}
+                    <div class="anki-definition">
+                        {{.Definition | safe}}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form action="/delete" method="POST" style="display:inline;">
+            <input type="hidden" name="word_to_delete" value="{{.Word}}">
+            <button type="submit" class="delete-btn" title="Delete word">&times;</button>
+        </form>
+    </li>
+    {{end}}
+</ul>
+        <br>
+        <a href="{{.DownloadURL}}" id="downloadBtn">Download output.apkg</a>
+    {{else}}
+        <p>No words available. <a href="/">Upload a new file</a>.</p>
+    {{end}}
+
+    <script>
+        let hoverTimer = null;
+        let activePopup = null;
+        let isPinned = false;
+
+        // 1. Mouse Enter: Start the 0.5s timer
+        function handleMouseEnter(e, wrapper) {
+            if (isPinned) return; // If something is pinned, don't hover-trigger others immediately
+
+            const popup = wrapper.querySelector('.anki-preview');
+            
+            hoverTimer = setTimeout(() => {
+                showPopup(popup, e.clientX, e.clientY);
+            }, 500); // 0.5s delay
+        }
+
+        // 2. Mouse Leave: Cancel timer and hide if not pinned
+        function handleMouseLeave(wrapper) {
+            if (hoverTimer) {
+                clearTimeout(hoverTimer);
+                hoverTimer = null;
+            }
+            // Only hide if we aren't pinned
+            if (!isPinned) {
+                const popup = wrapper.querySelector('.anki-preview');
+                popup.style.display = 'none';
+                activePopup = null;
+            }
+        }
+
+        // 3. Click: Show immediately and PIN it
+        function handleClick(e, wrapper) {
+            e.stopPropagation(); // Stop the click from hitting the document body
+            
+            // If we are clicking the same active pinned popup, do nothing or toggle?
+            // Let's assume we just ensure it's visible and updated position.
+            
+            // If another popup was open, close it
+            if (activePopup && activePopup !== wrapper.querySelector('.anki-preview')) {
+                activePopup.style.display = 'none';
+            }
+
+            const popup = wrapper.querySelector('.anki-preview');
+            
+            // Show immediately (no timer)
+            if (hoverTimer) clearTimeout(hoverTimer);
+            
+            showPopup(popup, e.clientX, e.clientY);
+            
+            // Set state to pinned
+            isPinned = true;
+        }
+
+        // Helper: Logic to show popup at mouse position
+        function showPopup(popup, x, y) {
+            activePopup = popup;
+            popup.style.display = 'block';
+
+            // "Top left is slightly left and top of the mouse pointer"
+            // We subtract 15px so the cursor is inside the box immediately
+            const offsetX = 15;
+            const offsetY = 15;
+
+            // Basic boundary check (optional, keeps it on screen)
+            let finalX = x - offsetX;
+            let finalY = y - offsetY;
+
+            // Apply coordinates
+            popup.style.left = finalX + 'px';
+            popup.style.top = finalY + 'px';
+        }
+
+        // 4. Global Click Listener: Close popup if clicking outside
+        document.addEventListener('click', function(e) {
+            if (activePopup && isPinned) {
+                // Check if the click target is INSIDE the active popup
+                if (activePopup.contains(e.target)) {
+                    return; // Do nothing, let user select text/interact
+                }
+                
+                // Clicked outside: Close everything
+                activePopup.style.display = 'none';
+                activePopup = null;
+                isPinned = false;
+            }
+        });
+    </script>
 </body>
 </html>
