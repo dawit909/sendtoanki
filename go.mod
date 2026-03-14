@@ -4,7 +4,7 @@ go 1.25.2
 
 require (
 	github.com/iancoleman/strcase v0.3.0
-	github.com/npcnixel/genanki-go v0.0.0-20251208223537-b9b15a4e9586
+	github.com/npcnixel/genanki-go v0.0.0-20260305182613-460b4074eb38
 	modernc.org/sqlite v1.42.2
 )
 
