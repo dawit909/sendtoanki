@@ -110,22 +110,30 @@ blockquote small:before {
 .nightMode .pos-header { color: #3498db; }
 .nightMode .def-list li,.nightMode h1 { color: #bdc3c7; }
 
+
+div small:before {
+ content: " -";
+}
+
+
+
 /* belows are from apple-dictionary-parser */
 
 /*==== HTML ====*/
 
 body
 {
-	font-size: 20px !important; /* Larger base text for readability */
+font-size: 20px !important;
     line-height: 1.6 !important;
-	margin-left: 0.9em;
-	margin-right: 0.9em;
-	margin-top: 1.0em;
-	margin-bottom: 1.5em;
-    padding: 0 4rem;
-	
-	color: CanvasText;
+    color: CanvasText;
+    
+    /* The Fix for PC and Mobile */
+    max-width: 800px;           /* Prevents text from stretching too wide on PC */
+    margin: 1.5em auto !important; /* Auto left/right margin centers the 800px block */
+    padding: 0 1rem !important;    /* Keeps a small, safe boundary on mobile screens */
 }
+
+
 html.apple_client-panel body
 {
 	margin-top: 0em;
