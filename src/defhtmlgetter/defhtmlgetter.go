@@ -1,8 +1,10 @@
 package defhtmlgetter
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -18,61 +20,122 @@ const htmlFooter = `</body>
 
 `
 
-var htmlEntries []*Entry
+// entryLoc stores exactly where in the file a definition lives on the disk.
+type entryLoc struct {
+	offset int64
+	length int
+}
+
+// Global Index: Maps a word (string) to a list of file locations.
+// We use a list []entryLoc because one word can have multiple definitions.
+var (
+	index     map[string][]entryLoc
+	cachePath string
+)
 
 func init() {
-	htmlEntries = LoadFromCacheFile("./resources/noad.cache")
-}
+	cachePath = "./resources/noad.cache"
+	index = make(map[string][]entryLoc)
 
-type Entry struct {
-	Title string // word
-	Body  []byte // word definition in XML
-}
-
-func renderSingleHTML(entries []*Entry, word string) string {
-	str := ""
-	for _, ent := range entries {
-		if word == ent.Title {
-			// trim "</d:entry>"
-			bodyWithoutClosingTag := ent.Body[:len(ent.Body)-len(closingTag)]
-			str += string(bodyWithoutClosingTag)
-			str += closingTag
-		}
+	// Build the lightweight index at startup
+	if err := buildIndex(cachePath); err != nil {
+		fmt.Printf("Warning: Could not build dictionary index: %v\n", err)
 	}
-	str += htmlFooter
-	return str
 }
 
-const DLMT = "\t"
-
-func LoadFromCacheFile(path string) []*Entry {
-	var r []*Entry
-	contents, err := os.ReadFile(path)
+// buildIndex scans the file line-by-line without keeping the content in memory.
+func buildIndex(path string) error {
+	f, err := os.Open(path)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	lines := bytes.Split(contents, []byte{'\n'})
-	for _, line := range lines[:] {
-		if len(line) == 0 {
-			// Possibly end of file
-			continue
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	var currentOffset int64 = 0
+
+	for {
+		// ReadBytes is safer and more memory-efficient for long lines
+		lineBytes, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				// Process the last line if the file doesn't end with a newline
+				if len(lineBytes) > 0 {
+					processLine(lineBytes, currentOffset)
+				}
+				break
+			}
+			return err
 		}
-		ttlBytes, rawBody, found := bytes.Cut(line, []byte(DLMT))
-		if !found {
-			panic("failed to Cut:" + (string(line)))
-		}
-		title := string(ttlBytes)
-		e := &Entry{
-			Title: title,
-			Body:  rawBody,
-		}
-		r = append(r, e)
+
+		processLine(lineBytes, currentOffset)
+		currentOffset += int64(len(lineBytes))
 	}
-	return r
+	return nil
 }
 
+// processLine extracts the title and calculates the byte offset of the body
+func processLine(lineBytes []byte, currentOffset int64) {
+	// Find the Tab delimiter
+	tabIdx := bytes.IndexByte(lineBytes, '\t')
+	if tabIdx == -1 {
+		return // Malformed line, skip
+	}
+
+	// Extract Title (Only memory allocation here)
+	title := string(lineBytes[:tabIdx])
+
+	// Calculate Body Location (Do NOT allocate body memory)
+	bodyStart := currentOffset + int64(tabIdx) + 1
+
+	// Check for trailing newline to exclude it from the length
+	trim := 0
+	if len(lineBytes) > 0 && lineBytes[len(lineBytes)-1] == '\n' {
+		trim = 1
+	}
+
+	bodyLength := len(lineBytes) - tabIdx - 1 - trim
+
+	if bodyLength > 0 {
+		index[title] = append(index[title], entryLoc{
+			offset: bodyStart,
+			length: bodyLength,
+		})
+	}
+}
+
+// Get looks up the word in the index, reads directly from disk, and returns HTML.
 func Get(word string) (string, error) {
-	dirtyHtml := renderSingleHTML(htmlEntries, word)
+	// 1. Check Index
+	locs, found := index[word]
+	if !found {
+		// Word not in dictionary, return just the footer (matches old behavior)
+		return CleanAppleDictHTML(htmlFooter)
+	}
+
+	// 2. Open File (On Demand)
+	f, err := os.Open(cachePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var sb strings.Builder
+
+	// 3. Read and Concatenate all definitions for this word from the disk
+	for _, loc := range locs {
+		bodyBuf := make([]byte, loc.length)
+		_, err := f.ReadAt(bodyBuf, loc.offset)
+		if err != nil && err != io.EOF {
+			return "", err
+		}
+
+		sb.Write(bodyBuf)
+	}
+
+	sb.WriteString(htmlFooter)
+
+	dirtyHtml := sb.String()
 	return CleanAppleDictHTML(dirtyHtml)
 }
 
